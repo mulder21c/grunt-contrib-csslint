@@ -72,28 +72,34 @@ module.exports = function(grunt) {
         combinedResult[filepath] = result;
 
         result.messages.forEach(function(message) {
-          var offenderMessage;
-          if (message.line !== 'undefined') {
-            offenderMessage =
-              chalk.yellow('L' + message.line) +
-              chalk.red(':') +
-              chalk.yellow('C' + message.col);
-          } else {
-            offenderMessage = chalk.yellow('GENERAL');
+          if (options.formatters && Array.isArray(options.formatters)) {
+            options.formatters.forEach(function (formatterDefinition) {
+              var formatterId = formatterDefinition.id;
+
+              if (formatterId && formatterDefinition.dest) {
+                if (!csslint.hasFormat(formatterId) && typeof formatterId === 'object') { // A custom formatter was supplied
+                  csslint.addFormatter(formatterId);
+
+                  formatterId = formatterId.id;
+                }
+
+                var formatter = csslint.getFormatter(formatterId);
+                if (formatter) {
+                  var output = formatter.startFormat();
+                  _.each(combinedResult, function (result, filename) {
+                    if (absoluteFilePaths) {
+                      filename = path.resolve(filename);
+                    }
+                    output += formatter.formatResults(result, filename, {});
+                  });
+                  output += formatter.endFormat();
+                  grunt.log.writeln(output);
+                }
+              }
+            });
           }
 
-          if (!options.quiet && !options.quiet_all || options.quiet && message.type === 'error' && !options.quiet_all) {
-            grunt.log.writeln(chalk.red('[') + offenderMessage + chalk.red(']'));
-            grunt.log[ message.type === 'error' ? 'error' : 'writeln' ](
-              message.type.toUpperCase() + ': ' +
-              message.message + ' ' +
-              message.rule.desc +
-              ' (' + message.rule.id + ')' +
-              ' Browsers: ' + message.rule.browsers
-            );
-          }
-
-          if (message.type === 'error') {
+          if (message.type === 'error' || message.type === 'warning') {
             hadErrors += 1;
           }
         });
@@ -102,34 +108,6 @@ module.exports = function(grunt) {
       }
 
     });
-
-    // formatted output
-    if (options.formatters && Array.isArray(options.formatters)) {
-      options.formatters.forEach(function (formatterDefinition) {
-        var formatterId = formatterDefinition.id;
-
-        if (formatterId && formatterDefinition.dest) {
-          if (!csslint.hasFormat(formatterId) && typeof formatterId === 'object') { // A custom formatter was supplied
-            csslint.addFormatter(formatterId);
-
-            formatterId = formatterId.id;
-          }
-
-          var formatter = csslint.getFormatter(formatterId);
-          if (formatter) {
-            var output = formatter.startFormat();
-            _.each(combinedResult, function (result, filename) {
-              if (absoluteFilePaths) {
-                filename = path.resolve(filename);
-              }
-              output += formatter.formatResults(result, filename, {});
-            });
-            output += formatter.endFormat();
-            grunt.file.write(formatterDefinition.dest, output);
-          }
-        }
-      });
-    }
 
     if (hadErrors) {
       return false;
